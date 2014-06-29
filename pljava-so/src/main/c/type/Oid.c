@@ -216,7 +216,11 @@ Java_org_postgresql_pljava_internal_Oid__1forTypeName(JNIEnv* env, jclass cls, j
 		PG_TRY();
 		{
 			int32 typmod = 0;
+#if (PGSQL_MAJOR_VER > 9 || (PGSQL_MAJOR_VER == 9 && PGSQL_MINOR_VER >= 4))
+			parseTypeString(typeNameOrOid, &typeId, &typmod, false);
+#else
 			parseTypeString(typeNameOrOid, &typeId, &typmod);
+#endif
 		}
 		PG_CATCH();
 		{
