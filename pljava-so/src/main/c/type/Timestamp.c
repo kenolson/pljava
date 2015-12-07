@@ -56,7 +56,7 @@ static jvalue Timestamp_coerceDatumTZ_id(Type self, Datum arg, bool tzAdjust)
 		mSecs += tz * 1000; /* Adjust from local time to UTC */
 
 	/* Adjust for diff between Postgres and Java (Unix) */
-	mSecs += ((jlong)EPOCH_DIFF) * 1000L; 
+	mSecs += ((jlong)EPOCH_DIFF) * 1000L;
 
 	result.l = JNI_newObject(s_Timestamp_class, s_Timestamp_init, mSecs);
 	if(uSecs != 0)
@@ -137,7 +137,7 @@ static Datum _Timestamp_coerceObject(Type self, jobject ts)
 	return Timestamp_coerceObjectTZ(self, ts, true);
 }
 
-/* 
+/*
  * Timestamp with time zone. Basically same as Timestamp but postgres will pass
  * this one in GMT timezone so there's no without ajustment for time zone.
  */
@@ -159,13 +159,20 @@ static Datum _Timestamptz_coerceObject(Type self, jobject ts)
 
 #if !(PGSQL_MAJOR_VER == 8 && PGSQL_MINOR_VER == 0)
 #if (PGSQL_MAJOR_VER > 8 || (PGSQL_MAJOR_VER == 8 && PGSQL_MINOR_VER >= 3))
+/* MSVC will not allow redefinition WITH dllimport after seeing
+ * the definition in pgtime.h that does not include dllimport.
+ */
+#ifdef _MSC_VER
+extern pg_tz *session_timezone;
+#else
 extern PGDLLIMPORT pg_tz* session_timezone;
+#endif
 #else
 extern DLLIMPORT pg_tz* global_timezone;
 #endif
 #endif
 
-static int Timestamp_getTimeZone(pg_time_t time)
+static int32 Timestamp_getTimeZone(pg_time_t time)
 {
 #if (PGSQL_MAJOR_VER == 8 && PGSQL_MINOR_VER == 0)
 	struct pg_tm* tx = pg_localtime(&time);
@@ -174,7 +181,7 @@ static int Timestamp_getTimeZone(pg_time_t time)
 #else
 	struct pg_tm* tx = pg_localtime(&time, session_timezone);
 #endif
-	return -tx->tm_gmtoff;
+	return -(int32)tx->tm_gmtoff;
 }
 
 int32 Timestamp_getTimeZone_id(int64 dt)

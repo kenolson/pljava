@@ -36,6 +36,8 @@ jmethodID SQLException_getSQLState;
 jclass    UnsupportedOperationException_class;
 jmethodID UnsupportedOperationException_init;
 
+jclass    NoSuchMethodError_class;
+
 void
 Exception_featureNotSupported(const char* requestedFeature, const char* introVersion)
 {
@@ -88,7 +90,7 @@ void Exception_throw(int errCode, const char* errMessage, ...)
 		 */
 		for (idx = 0; idx < 5; ++idx)
 		{
-			buf[idx] = PGUNSIXBIT(errCode);
+			buf[idx] = (char)PGUNSIXBIT(errCode);
 			errCode >>= 6;
 		}
 		buf[idx] = 0;
@@ -186,6 +188,8 @@ void Exception_initialize(void)
 
 	UnsupportedOperationException_class = (jclass)JNI_newGlobalRef(PgObject_getJavaClass("java/lang/UnsupportedOperationException"));
 	UnsupportedOperationException_init = PgObject_getJavaMethod(UnsupportedOperationException_class, "<init>", "(Ljava/lang/String;)V");
+
+	NoSuchMethodError_class = (jclass)JNI_newGlobalRef(PgObject_getJavaClass("java/lang/NoSuchMethodError"));
 
 	Class_getName = PgObject_getJavaMethod(Class_class, "getName", "()Ljava/lang/String;");
 }

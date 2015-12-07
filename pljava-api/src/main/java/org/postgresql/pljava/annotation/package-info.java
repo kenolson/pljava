@@ -52,14 +52,20 @@
  * in the top directory of the tree where the compiled class files are written.
  * <dt><code>ddr.name.trusted</code>
  * <dd>The language name that will be used to declare methods that are
- * annotated to have {@link Function.Trust#RESTRICTED} behavior. If not
+ * annotated to have {@link org.postgresql.pljava.annotation.Function.Trust#RESTRICTED} behavior. If not
  * specified, the name <code>java</code> will be used. It must match the name
  * used for the "trusted" language declaration when PL/Java was installed.
  * <dt><code>ddr.name.untrusted</code>
  * <dd>The language name that will be used to declare methods that are
- * annotated to have {@link Function.Trust#UNRESTRICTED} behavior. If not
+ * annotated to have {@link org.postgresql.pljava.annotation.Function.Trust#UNRESTRICTED} behavior. If not
  * specified, the name <code>javaU</code> will be used. It must match the name
  * used for the "untrusted" language declaration when PL/Java was installed.
+ * <dt><code>ddr.implementor</code>
+ * <dd>The identifier (defaulting to {@code PostgreSQL} if not specified here)
+ * that will be used in the {@code <implementor block>}s wrapping any SQL
+ * generated from elements that do not specify their own. If this is set to a
+ * single hyphen (-), elements that specify no implementor will produce plain
+ * {@code <SQL statement>}s not wrapped in {@code <implementor block>}s.
  * </dl>
  * <li>The deployment descriptor may contain statements that cannot succeed if
  * placed in the wrong order, and to keep a manually-edited script in a workable

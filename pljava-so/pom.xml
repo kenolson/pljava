@@ -7,16 +7,82 @@
 		<version>0.0.2-SNAPSHOT</version>
 	</parent>
 	<artifactId>pljava-so</artifactId>
-	<name>pl/java server side library</name>
-	<description>Generates the pljava.so library which gets loaded by the PostgreSQL server.</description>
+	<name>PL/Java backend native code</name>
+	<description>
+		Generates the pljava (.so, .dll, etc.) library which gets loaded		by the PostgreSQL backend
+	</description>
 	<packaging>nar</packaging>
+
+	<properties>
+		<!-- use -Dnar.cores=1 if non-interleaved warning messages wanted -->
+		<nar.cores>0</nar.cores>
+	</properties>
+
+	<profiles>
+		<profile>
+			<id>compiler-msvc</id>
+			<activation>
+				<property>
+					<name>env.VCINSTALLDIR</name>
+				</property>
+			</activation>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>com.github.maven-nar</groupId>
+						<artifactId>nar-maven-plugin</artifactId>
+						<configuration>
+							<c>
+								<defines combine.children='append'>
+									<!-- Need this for Visual Studio 2013 and Postgresql v9.3 and below -->
+									<define>${MSVC_RINT}</define>
+								</defines>
+								<includePaths combine.children='append'>
+									<includePath>${PGSQL_INCLUDEDIR-SERVER}/port/win32</includePath>
+									<includePath>${PGSQL_INCLUDEDIR-SERVER}/port/win32_msvc</includePath>
+								</includePaths>
+							</c>
+							<linker>
+								<libs combine.children='append'>
+									<lib>
+										<name>postgres</name>
+										<type>shared</type>
+										<directory>${PGSQL_PKGLIBDIR}</directory>
+									</lib>
+								</libs>
+							</linker>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+
+		<profile>
+			<id>wnosign</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>com.github.maven-nar</groupId>
+						<artifactId>nar-maven-plugin</artifactId>
+							<configuration>
+								<c>
+									<options>
+										<option>-Wno-sign-conversion</option>
+									</options>
+								</c>
+							</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 
 	<build>
 		<plugins>
 
-			<!-- Several things that could not be done using Maven plugins. This plugin 
-				must be listet FIRST as the pgsql.properties file has to be written before 
-				properties-maven-plugin is called, which can apparently also only happen 
+			<!-- Several things that could not be done using Maven plugins. This plugin
+				must be listet FIRST as the pgsql.properties file has to be written before
+				properties-maven-plugin is called, which can apparently also only happen
 				in the "initialize" phase. -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -54,9 +120,9 @@
 				</executions>
 			</plugin>
 
-			<!-- Reads the pg_config properties, which were extracted by an Ant task 
-				in the "initialize" phase, into Maven variables. As this plugin seems to 
-				get ignored in any phase other than "initialize" it must be listed after 
+			<!-- Reads the pg_config properties, which were extracted by an Ant task
+				in the "initialize" phase, into Maven variables. As this plugin seems to
+				get ignored in any phase other than "initialize" it must be listed after
 				the Ant task. -->
 			<plugin>
 				<groupId>org.codehaus.mojo</groupId>
@@ -85,6 +151,7 @@
 				<extensions>true</extensions>
 
 				<configuration>
+					<maxCores>${nar.cores}</maxCores>
 					<!-- Generates C header files from Java class files. -->
 					<javah>
 						<classPaths>
@@ -92,7 +159,6 @@
 							<classPath>${basedir}/../pljava-api/target/classes/</classPath>
 						</classPaths>
 						<classDirectory>${basedir}/../pljava/target/classes/</classDirectory>
-						<!-- The following needs https://github.com/maven-nar/maven-nar-plugin/pull/22 -->
 						<extraClasses>
 							<extraClass>java.sql.Types</extraClass>
 						</extraClasses>
@@ -104,7 +170,10 @@
 						<name>${CPP_COMPILER}</name>
 				-->
 						<defines>
-							<define>PKGLIBDIR="target/lib/"</define>
+							<!-- What PKGLIBDIR controls is the expansion of
+							     $libdir if used in pljava.classpath
+							-->
+							<define>PKGLIBDIR=${PGSQL_PKGLIBDIR}</define>
 							<define>PGSQL_MAJOR_VER=${PGSQL_MAJOR_VER}</define>
 							<define>PGSQL_MINOR_VER=${PGSQL_MINOR_VER}</define>
 							<define>PGSQL_PATCH_VER=${PGSQL_PATCH_VER}</define>
@@ -118,14 +187,16 @@
 						</includePaths>
 					</c>
 
+					<java>
+						<!-- This is supposed to be the same as adding the
+						     exact right <lib> specification under <linker>
+							 to refer to libjvm.
+						-->
+						<link>true</link>
+					</java>
 					<!-- Defines linker flags "-ljvm -L.../server" -->
 					<linker>
 						<libs>
-							<lib>
-								<name>jvm</name>
-								<type>shared</type>
-								<directory>${sun.boot.library.path}/server</directory>
-							</lib>
 							<lib>
 								<name>ecpg</name>
 								<type>shared</type>
@@ -155,7 +226,7 @@
 				</configuration>
 			</plugin>
 
-			<!-- The deploy goal will be hijacked by an ant task so the original plugin 
+			<!-- The deploy goal will be hijacked by an ant task so the original plugin
 				has to be silenced until we actually use it.
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -169,7 +240,7 @@
 		</plugins>
 		<pluginManagement>
 			<plugins>
-				<!--This plugin's configuration is used to store Eclipse m2e settings 
+				<!--This plugin's configuration is used to store Eclipse m2e settings
 					only. It has no influence on the Maven build itself. -->
 				<plugin>
 					<groupId>org.eclipse.m2e</groupId>
@@ -208,8 +279,8 @@
 								</pluginExecution>
 								<pluginExecution>
 									<pluginExecutionFilter>
-										<groupId>org.apache.maven.plugins</groupId>
-										<artifactId>maven-nar-plugin</artifactId>
+										<groupId>com.github.maven-nar</groupId>
+										<artifactId>nar-maven-plugin</artifactId>
 										<versionRange>[3.1.0]</versionRange>
 										<goals>
 											<goal>nar-compile</goal>

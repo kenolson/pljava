@@ -15,12 +15,20 @@
 
 JNIEnv* jniEnv;
 
+/* MSVC will not allow redefinition WITH dllimport after seeing
+ * the definition in guc.h that does not include dllimport.
+ */
+#ifdef _MSC_VER
+extern int	log_min_error_statement;
+extern int	client_min_messages;
+#else
 #if (PGSQL_MAJOR_VER > 8 || (PGSQL_MAJOR_VER == 8 && PGSQL_MINOR_VER >= 3))
 extern PGDLLIMPORT int log_min_messages;
 extern PGDLLIMPORT int client_min_messages;
 #else
 extern DLLIMPORT int log_min_messages;
 extern DLLIMPORT int client_min_messages;
+#endif
 #endif
 static jobject s_threadLock;
 
@@ -33,6 +41,11 @@ static jobject s_threadLock;
 		elog(ERROR, "Java exit monitor failure");
 
 #define END_CALL endCall(env); }
+
+#define BEGIN_CALL_MONITOR_HELD \
+	BEGIN_JAVA
+
+#define END_CALL_MONITOR_HELD endCallMonitorHeld(env); }
 
 static void elogExceptionMessage(JNIEnv* env, jthrowable exh, int logLevel)
 {
@@ -92,6 +105,30 @@ static void endCall(JNIEnv* env)
 
 	if((*env)->MonitorEnter(env, s_threadLock) < 0)
 		elog(ERROR, "Java enter monitor failure");
+
+	jniEnv = env;
+	if(exh != 0)
+	{
+		printStacktrace(env, exh);
+		if((*env)->IsInstanceOf(env, exh, ServerException_class))
+		{
+			/* Rethrow the server error.
+			 */
+			jobject jed = (*env)->CallObjectMethod(env, exh, ServerException_getErrorData);
+			if(jed != 0)
+				ReThrowError(ErrorData_getErrorData(jed));
+		}
+		/* There's no return from this call.
+		 */
+		elogExceptionMessage(env, exh, ERROR);
+	}
+}
+
+static void endCallMonitorHeld(JNIEnv* env)
+{
+	jobject exh = (*env)->ExceptionOccurred(env);
+	if(exh != 0)
+		(*env)->ExceptionClear(env);
 
 	jniEnv = env;
 	if(exh != 0)
@@ -247,6 +284,25 @@ jint JNI_callIntMethodV(jobject object, jmethodID methodID, va_list args)
 	return result;
 }
 
+jint JNI_callIntMethodLocked(jobject object, jmethodID methodID, ...)
+{
+	jint result;
+	va_list args;
+	va_start(args, methodID);
+	result = JNI_callIntMethodLockedV(object, methodID, args);
+	va_end(args);
+	return result;
+}
+
+jint JNI_callIntMethodLockedV(jobject object, jmethodID methodID, va_list args)
+{
+	jint result;
+	BEGIN_CALL_MONITOR_HELD
+	result = (*env)->CallIntMethodV(env, object, methodID, args);
+	END_CALL_MONITOR_HELD
+	return result;
+}
+
 jlong JNI_callLongMethod(jobject object, jmethodID methodID, ...)
 {
 	jlong result;
@@ -301,6 +357,25 @@ jobject JNI_callObjectMethodV(jobject object, jmethodID methodID, va_list args)
 	BEGIN_CALL
 	result = (*env)->CallObjectMethodV(env, object, methodID, args);
 	END_CALL
+	return result;
+}
+
+jobject JNI_callObjectMethodLocked(jobject object, jmethodID methodID, ...)
+{
+	jobject result;
+	va_list args;
+	va_start(args, methodID);
+	result = JNI_callObjectMethodLockedV(object, methodID, args);
+	va_end(args);
+	return result;
+}
+
+jobject JNI_callObjectMethodLockedV(jobject object, jmethodID methodID, va_list args)
+{
+	jobject result;
+	BEGIN_CALL_MONITOR_HELD
+	result = (*env)->CallObjectMethodV(env, object, methodID, args);
+	END_CALL_MONITOR_HELD
 	return result;
 }
 
@@ -405,6 +480,25 @@ jobject JNI_callStaticObjectMethodV(jclass clazz, jmethodID methodID, va_list ar
 	return result;
 }
 
+jobject JNI_callStaticObjectMethodLocked(jclass clazz, jmethodID methodID, ...)
+{
+	jobject result;
+	va_list args;
+	va_start(args, methodID);
+	result = JNI_callStaticObjectMethodLockedV(clazz, methodID, args);
+	va_end(args);
+	return result;
+}
+
+jobject JNI_callStaticObjectMethodLockedV(jclass clazz, jmethodID methodID, va_list args)
+{
+	jobject result;
+	BEGIN_CALL_MONITOR_HELD
+	result = (*env)->CallStaticObjectMethodV(env, clazz, methodID, args);
+	END_CALL_MONITOR_HELD
+	return result;
+}
+
 jshort JNI_callStaticShortMethodA(jclass clazz, jmethodID methodID, jvalue* args)
 {
 	jshort result;
@@ -449,6 +543,21 @@ void JNI_callVoidMethodV(jobject object, jmethodID methodID, va_list args)
 	BEGIN_CALL
 	(*env)->CallVoidMethodV(env, object, methodID, args);
 	END_CALL
+}
+
+void JNI_callVoidMethodLocked(jobject object, jmethodID methodID, ...)
+{
+	va_list args;
+	va_start(args, methodID);
+	JNI_callVoidMethodLockedV(object, methodID, args);
+	va_end(args);
+}
+
+void JNI_callVoidMethodLockedV(jobject object, jmethodID methodID, va_list args)
+{
+	BEGIN_CALL_MONITOR_HELD
+	(*env)->CallVoidMethodV(env, object, methodID, args);
+	END_CALL_MONITOR_HELD
 }
 
 jint JNI_createVM(JavaVM** javaVM, JavaVMInitArgs* vmArgs)
@@ -742,10 +851,16 @@ jmethodID JNI_getStaticMethodID(jclass clazz, const char* name, const char* sig)
 jmethodID JNI_getStaticMethodIDOrNull(jclass clazz, const char* name, const char* sig)
 {
 	jmethodID result;
+	jobject exh;
 	BEGIN_CALL
 	result = (*env)->GetStaticMethodID(env, clazz, name, sig);
-	if(result == 0)
-		(*env)->ExceptionClear(env);
+	if(result == 0) {
+		exh = (*env)->ExceptionOccurred(env);
+		if ( 0 == exh
+			||  (*env)->IsInstanceOf(env, exh, NoSuchMethodError_class) )
+			(*env)->ExceptionClear(env); /* NoSuch... is only thing to ignore */
+		(*env)->DeleteLocalRef(env, exh);
+	}
 	END_CALL
 	return result;
 }
@@ -795,6 +910,15 @@ jboolean JNI_isInstanceOf(jobject obj, jclass clazz)
 	jboolean result;
 	BEGIN_JAVA
 	result = (*env)->IsInstanceOf(env, obj, clazz);
+	END_JAVA
+	return result;
+}
+
+jboolean JNI_isSameObject(jobject obj1, jobject obj2)
+{
+	jboolean result;
+	BEGIN_JAVA
+	result = (*env)->IsSameObject(env, obj1, obj2);
 	END_JAVA
 	return result;
 }

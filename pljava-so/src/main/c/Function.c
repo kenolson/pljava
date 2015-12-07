@@ -25,6 +25,11 @@
 #include <funcapi.h>
 #include <utils/typcache.h>
 
+#ifdef _MSC_VER
+#	define strcasecmp _stricmp
+#	define strncasecmp _strnicmp
+#endif
+
 #if (PGSQL_MAJOR_VER == 8 && PGSQL_MINOR_VER == 0)
 #	define PARAM_OIDS(procStruct) (procStruct)->proargtypes
 #else
@@ -813,8 +818,8 @@ bool Function_isCurrentReadOnly(void)
 	/* function will be 0 during resolve of class and java function. At
 	 * that time, no updates are allowed (or needed).
 	 */
-	return (currentInvocation->function == 0)
-		? true
-		: currentInvocation->function->readOnly;
+	if (currentInvocation->function == 0)
+		return true;
+	return currentInvocation->function->readOnly;
 }
 
