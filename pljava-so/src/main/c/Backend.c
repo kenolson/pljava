@@ -65,18 +65,25 @@
 PG_MODULE_MAGIC;
 #endif
 
-#ifdef PG_GETCONFIGOPTION
-#error The macro PG_GETCONFIGOPTION needs to be renamed.
-#endif
-
-#if ( PGSQL_MAJOR_VER > 8 )
-#if ( PGSQL_MINOR_VER > 0 )
-#define PG_GETCONFIGOPTION(key) GetConfigOption(key, false, true)
+/* About PGDLLEXPORT. It didn't exist before PG 9.0. In that revision it was
+ * defined (for Windows) as __declspec(dllexport) for MSVC, but as
+ * __declspec(dllimport) for any other toolchain. That was quickly changed
+ * (for 9.0.2 and ever since) as still __declspec(dllexport) for MSVC, but
+ * empty for any other toolchain. The explanation for that (in PG commit
+ * 844ed5d in November 2010) was that "dllexport and dllwrap don't work well
+ * together." There are records as far back as 2002 anyway
+ * (e.g. http://lists.gnu.org/archive/html/libtool/2002-09/msg00069.html)
+ * calling dllwrap deprecated, and PL/Java's Maven build certainly doesn't
+ * use it, I don't know what it would do if it did, and at the moment I have
+ * no one to test Windows builds using any toolchain other than MSVC anyway.
+ * It seems too brittle to rely on whatever PGDLLEXPORT might happen to mean
+ * across PG versions, and wiser for the moment to cleanly define something
+ * here, for the all of three symbols that need it.
+ */
+#ifdef _MSC_VER
+#define PLJAVADLLEXPORT __declspec (dllexport)
 #else
-#define PG_GETCONFIGOPTION(key) GetConfigOption(key, true)
-#endif
-#else
-#define PG_GETCONFIGOPTION(key) GetConfigOption(key)
+#define PLJAVADLLEXPORT
 #endif
 
 #define LOCAL_REFERENCE_COUNT 128
